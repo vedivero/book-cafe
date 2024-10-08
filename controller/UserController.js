@@ -13,8 +13,6 @@ const join = (req, res) => {
    const salt = crypto.randomBytes(64).toString('base64');
    const hashPassword = crypto.pbkdf2Sync(password, salt, 10000, 64, 'sha512').toString('base64');
 
-   console.log('salt : ', salt);
-
    let values = [email, hashPassword, name, salt];
 
    conn.query(sql, values, (err, result) => {

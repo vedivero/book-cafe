@@ -5,7 +5,8 @@ const allBooks = (req, res) => {
    let { category_id, news, limit, currentPage } = req.query;
 
    let offset = limit * (currentPage - 1);
-   let sql = 'select * from books ';
+   let sql =
+      'select *,(select count(*) from favorite where books.id = favorite_book_id ) as favorite from books ';
    let values = [];
 
    if (category_id && news) {
@@ -34,11 +35,16 @@ const allBooks = (req, res) => {
 };
 
 const detailBook = (req, res) => {
-   let { id } = req.params;
+   let { user_id } = req.body;
+   let book_id = req.params.id;
 
-   let sql = `SELECT * FROM bookCafe.books left join category
-      on books.category_id = category.id where books.id = ?`;
-   conn.query(sql, id, (err, result) => {
+   let sql = `SELECT *,
+               (select count(*) from favorite where favorite_book_id = books.id) as favorities,
+               (select exists(select * from favorite where user_id = ? and favorite_book_id = ?) )as favorite
+             FROM bookCafe.books left join category
+               on books.category_id = category.category_id where books.id = ?`;
+   let values = [user_id, book_id, book_id];
+   conn.query(sql, values, (err, result) => {
       if (err) {
          console.log(err);
          return res.status(StatusCodes.BAD_REQUEST).end();
