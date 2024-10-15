@@ -25,7 +25,8 @@ const getCart = (req, res) => {
                 where user_id = ?
                 and cart.id in (?)`;
 
-   conn.query(sql, [user_id, selected], (err, result) => {
+   let values = [user_id, selected];
+   conn.query(sql, values, (err, result) => {
       if (err) {
          console.log(err);
          return res.status(StatusCodes.BAD_REQUEST).end();

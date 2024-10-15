@@ -1,6 +1,6 @@
 const mariadb = require('mysql2');
 
-const connection = mariadb.createConnection({
+const conn = mariadb.createConnection({
    host: '127.0.0.1',
    user: 'root',
    password: 'root',
@@ -8,4 +8,4 @@ const connection = mariadb.createConnection({
    dateStrings: true,
 });
 
-module.exports = connection;
+module.exports = conn;
