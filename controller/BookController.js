@@ -4,11 +4,15 @@ const ensureAuthorization = require('../auth');
 const { TokenExpiredError, JsonWebTokenError } = require('jsonwebtoken');
 
 const allBooks = (req, res) => {
+   let allBooksRes = {};
+
    let { category_id, news, limit, currentPage } = req.query;
 
    let offset = limit * (currentPage - 1);
-   let sql =
-      'select *,(select count(*) from favorite where books.id = favorite_book_id ) as favorite from books ';
+   let sql = `select SQL_CALC_FOUND_ROWS *,
+            (select count(*) from favorite where books.id = favorite_book_id ) as favorite
+               from
+                  books `;
    let values = [];
 
    if (category_id && news) {
@@ -28,11 +32,27 @@ const allBooks = (req, res) => {
          console.log(err);
          return res.status(StatusCodes.BAD_REQUEST).end();
       }
-      if (result[0]) {
-         return res.status(StatusCodes.OK).json(result);
+      if (result.length) {
+         allBooksRes.books = result;
       } else {
          return res.status(StatusCodes.NOT_FOUND).end();
       }
+   });
+
+   sql = `select found_rows()`;
+   conn.query(sql, (err, result) => {
+      if (err) {
+         console.log(err);
+         return res.status(StatusCodes.BAD_REQUEST).end();
+      }
+
+      let pagination = {};
+      pagination.currentPage = currentPage;
+      pagination.totalCount = result[0]['found_rows()'];
+
+      allBooksRes.pagination = pagination;
+
+      return res.status(StatusCodes.OK).json(allBooksRes);
    });
 };
 
