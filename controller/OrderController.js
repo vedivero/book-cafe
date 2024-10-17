@@ -1,4 +1,5 @@
-//const conn = require('../mariadb');
+const ensureAuthorization = require('../auth');
+const { TokenExpiredError, JsonWebTokenError } = require('jsonwebtoken');
 const mariadb = require('mysql2/promise');
 const { StatusCodes } = require('http-status-codes');
 
@@ -11,81 +12,111 @@ const orders = async (req, res) => {
       dateStrings: true,
    });
 
-   const { items, delivery, totalQuantity, totalPrice, user_id, firstBookTitle } = req.body;
+   let authorization = ensureAuthorization(req);
 
-   let delivery_Id;
-   let order_id;
+   if (authorization instanceof TokenExpiredError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '로그인 세션이 만료되었습니다.',
+      });
+   } else if (authorization instanceof JsonWebTokenError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '잘못된 토큰입니다.',
+      });
+   } else {
+      const { items, delivery, totalQuantity, totalPrice, firstBookTitle } = req.body;
 
-   //into delivery
-   let sql = 'INSERT INTO delivery(address, receiver, contact) values (?, ?, ?)';
-   let values = [delivery.address, delivery.receiver, delivery.contact];
+      //into delivery
+      let sql = 'INSERT INTO delivery(address, receiver, contact) values (?, ?, ?)';
+      let values = [delivery.address, delivery.receiver, delivery.contact];
+      let [result] = await conn.execute(sql, values);
+      let delivery_Id = result.insertId;
 
-   let [result] = await conn.execute(sql, values);
+      //into order
+      sql =
+         'INSERT INTO orders(book_title, total_quantity, total_price, user_id, delivery_id) values (?, ?, ?, ?, ?)';
+      values = [firstBookTitle, totalQuantity, totalPrice, authorization.id, delivery_Id];
 
-   console.log(result);
+      [result] = await conn.execute(sql, values);
+      let order_id = result.insertId;
 
-   //into order
-   sql =
-      'INSERT INTO orders(book_title, total_quantity, total_price, user_id, delivery_id) values (?, ?, ?, ?, ?)';
-   values = [firstBookTitle, totalQuantity, totalPrice, user_id, delivery_Id];
+      sql = `select book_id, quantity from cart where id in(?)`;
+      let [orderItems, fields] = await conn.query(sql, [items]);
 
-   [result] = await conn.execute(sql, values);
-   order_id = result.insertId;
-
-   sql = `select book_id, quantity from cart where id in(?)`;
-   let orderItems = await conn.query(sql, [items]);
-
-   //into orderedBook
-   sql = 'INSERT INTO orderedBook(order_id, book_id, quantity) values (?)';
-   values = [];
-   items.forEach((item) => {
-      values.push([order_id, item.book_id, item.quantity]);
-   });
-   [result] = await conn.query(sql, [values]);
-   result = await deleteCartItems(req, res);
-   return res.status(StatusCodes.OK).json(result);
+      //into orderedBook
+      sql = 'INSERT INTO orderedBook(order_id, book_id, quantity) values ?';
+      values = [];
+      orderItems.forEach((item) => {
+         values.push([order_id, item.book_id, item.quantity]);
+      });
+      [result] = await conn.query(sql, [values]);
+      result = await deleteCartItems(conn, items);
+      return res.status(StatusCodes.OK).json(result);
+   }
 };
 
-const deleteCartItems = async (req, res) => {
-   let sql = `delete from cart where id in (?)`;
-   let values = [1, 2, 3];
-
-   let result = await conn.execute(sql, [items]);
+const deleteCartItems = async (conn, items) => {
+   const placeholders = items.map(() => '?').join(', ');
+   const sql = `DELETE FROM cart WHERE id IN (${placeholders})`;
+   const [result] = await conn.execute(sql, items);
    return result;
 };
 
 const getOrders = async (req, res) => {
-   const conn = await mariadb.createConnection({
-      host: '127.0.0.1',
-      user: 'root',
-      password: 'root',
-      database: 'bookCafe',
-      dateStrings: true,
-   });
-   let sql = `SELECT orders.id, book_title, total_quantity, total_price, created_at,
-            address, receiver, contact
-            FROM orders LEFT JOIN delivery
-            ON orders.delivery_id = delivery.id;`;
+   let authorization = ensureAuthorization(req);
 
-   let [rows, fields] = await conn.query(sql);
-   return res.status(StatusCodes.OK).json(rows);
+   if (authorization instanceof TokenExpiredError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '로그인 세션이 만료되었습니다.',
+      });
+   } else if (authorization instanceof JsonWebTokenError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '잘못된 토큰입니다.',
+      });
+   } else {
+      const conn = await mariadb.createConnection({
+         host: '127.0.0.1',
+         user: 'root',
+         password: 'root',
+         database: 'bookCafe',
+         dateStrings: true,
+      });
+      let sql = `SELECT orders.id, book_title, total_quantity, total_price, created_at,
+               address, receiver, contact
+               FROM orders LEFT JOIN delivery
+               ON orders.delivery_id = delivery.id;`;
+
+      let [rows, fields] = await conn.query(sql);
+      return res.status(StatusCodes.OK).json(rows);
+   }
 };
 
 const getOrderDetail = async (req, res) => {
-   const { id } = req.params;
-   const conn = await mariadb.createConnection({
-      host: '127.0.0.1',
-      user: 'root',
-      password: 'root',
-      database: 'bookCafe',
-      dateStrings: true,
-   });
-   let sql = `SELECT  title, author, price, quantity
-            FROM orderedBook LEFT JOIN books
-            ON orderedBook.book_id = books.id;`;
+   let authorization = ensureAuthorization(req);
 
-   let [rows, fields] = await conn.query(sql, [id]);
-   return res.status(StatusCodes.OK).json(rows);
+   if (authorization instanceof TokenExpiredError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '로그인 세션이 만료되었습니다.',
+      });
+   } else if (authorization instanceof JsonWebTokenError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '잘못된 토큰입니다.',
+      });
+   } else {
+      const orderId = req.params.id;
+      const conn = await mariadb.createConnection({
+         host: '127.0.0.1',
+         user: 'root',
+         password: 'root',
+         database: 'bookCafe',
+         dateStrings: true,
+      });
+      let sql = `SELECT  title, author, price, quantity
+               FROM orderedBook LEFT JOIN books
+               ON orderedBook.book_id = books.id;`;
+
+      let [rows, fields] = await conn.query(sql, [orderId]);
+      return res.status(StatusCodes.OK).json(rows);
+   }
 };
 
 module.exports = {

@@ -1,52 +1,96 @@
+const ensureAuthorization = require('../auth');
+const { TokenExpiredError, JsonWebTokenError } = require('jsonwebtoken');
+
 const conn = require('../mariadb');
 const { StatusCodes } = require('http-status-codes');
 
 const addCart = (req, res) => {
-   const { book_id, quantity, user_id } = req.body;
+   const { book_id, quantity } = req.body;
 
-   let sql = 'INSERT INTO cart(book_id, quantity, user_id) values (?, ?, ?)';
-   let values = [book_id, quantity, user_id];
+   let authorization = ensureAuthorization(req);
 
-   conn.query(sql, values, (err, result) => {
-      if (err) {
-         console.log(err);
-         return res.status(StatusCodes.BAD_REQUEST).end();
-      }
-      return res.status(StatusCodes.CREATED).json(result);
-   });
+   if (authorization instanceof TokenExpiredError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '로그인 세션이 만료되었습니다.',
+      });
+   } else if (authorization instanceof JsonWebTokenError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '잘못된 토큰입니다.',
+      });
+   } else {
+      let sql = 'INSERT INTO cart(book_id, quantity, user_id) values (?, ?, ?)';
+      let values = [book_id, quantity, authorization.id];
+
+      conn.query(sql, values, (err, result) => {
+         if (err) {
+            console.log(err);
+            return res.status(StatusCodes.BAD_REQUEST).end();
+         }
+         return res.status(StatusCodes.CREATED).json(result);
+      });
+   }
 };
 
 const getCart = (req, res) => {
-   let { user_id, selected } = req.body;
+   let { selected } = req.body;
 
-   let sql = `select cart.id, book_id, title, summary, quantity, price
-                from cart left join books
-                on cart.book_id = books.id
-                where user_id = ?
-                and cart.id in (?)`;
+   let authorization = ensureAuthorization(req);
 
-   let values = [user_id, selected];
-   conn.query(sql, values, (err, result) => {
-      if (err) {
-         console.log(err);
-         return res.status(StatusCodes.BAD_REQUEST).end();
+   if (authorization instanceof TokenExpiredError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '로그인 세션이 만료되었습니다.',
+      });
+   } else if (authorization instanceof JsonWebTokenError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '잘못된 토큰입니다.',
+      });
+   } else {
+      let sql = `select cart.id, book_id, title, summary, quantity, price
+      from cart left join books
+      on cart.book_id = books.id
+      where user_id = ?`;
+
+      let values = [authorization.id, selected];
+
+      if (selected) {
+         sql += `and cart.id in (?)`;
+         values.push(selected);
       }
-      return res.status(StatusCodes.CREATED).json(result);
-   });
+
+      conn.query(sql, values, (err, result) => {
+         if (err) {
+            console.log(err);
+            return res.status(StatusCodes.BAD_REQUEST).end();
+         }
+         return res.status(StatusCodes.CREATED).json(result);
+      });
+   }
 };
 
 const removeCart = (req, res) => {
-   let { id } = req.params;
+   let authorization = ensureAuthorization(req);
 
-   let sql = `delete from cart where id = ?`;
+   if (authorization instanceof TokenExpiredError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '로그인 세션이 만료되었습니다.',
+      });
+   } else if (authorization instanceof JsonWebTokenError) {
+      return res.status(StatusCodes.UNAUTHORIZED).json({
+         message: '잘못된 토큰입니다.',
+      });
+   } else {
+      let cartItemId = req.params.id;
 
-   conn.query(sql, id, (err, result) => {
-      if (err) {
-         console.log(err);
-         return res.status(StatusCodes.BAD_REQUEST).end();
-      }
-      return res.status(StatusCodes.CREATED).json(result);
-   });
+      let sql = `delete from cart where id = ?`;
+
+      conn.query(sql, cartItemId, (err, result) => {
+         if (err) {
+            console.log(err);
+            return res.status(StatusCodes.BAD_REQUEST).end();
+         }
+         return res.status(StatusCodes.CREATED).json(result);
+      });
+   }
 };
 
 module.exports = {

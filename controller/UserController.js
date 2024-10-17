@@ -29,6 +29,7 @@ const login = (req, res) => {
    const { email, password } = req.body;
 
    let sql = 'select * from users where email=?';
+
    conn.query(sql, email, (err, result) => {
       if (err) {
          console.log(err);
@@ -36,27 +37,27 @@ const login = (req, res) => {
       }
 
       const loginUser = result[0];
-
+      console.log(loginUser);
       const hashPassword = crypto
          .pbkdf2Sync(password, loginUser.salt, 10000, 64, 'sha512')
          .toString('base64');
-
       if (loginUser && loginUser.password === hashPassword) {
          const token = jwt.sign(
             {
+               id: loginUser.id,
                email: loginUser.email,
             },
             process.env.PRIVATE_KEY,
             {
-               expiresIn: '30m',
+               expiresIn: '3h',
                issuer: 'vedivero',
             },
          );
-
          res.cookie('token', token, {
             httpOnly: true,
          });
 
+         console.log(result);
          res.status(StatusCodes.OK).json(result);
       } else {
          return res.status(StatusCodes.UNAUTHORIZED).end();
